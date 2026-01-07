@@ -8,6 +8,9 @@ export interface Trip {
   endTime: string;
   days: number | string;
   isHardship: boolean;
+  mainTravelerId: string;
+  fellowTravelerIds: string[];
+  specificHardshipArea: string;
 }
 
 export interface Expense {
@@ -35,6 +38,14 @@ export interface Traveler {
   isMain: boolean;
   bankAccount: string;
   bankName: string;
+}
+
+export interface Loan {
+  id: string;
+  orderNo: string;
+  totalAmount: number;
+  remainingAmount: number;
+  clearingAmount: number;
 }
 
 export interface BasicInfo {

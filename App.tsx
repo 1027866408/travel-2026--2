@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
   FileText, Plus, Trash2, Search, Zap, Wallet, 
@@ -5,11 +6,11 @@ import {
   UserCheck, X, CheckCircle2,
   Users, CreditCard, Landmark, ArrowRight, MapPin, Info,
   Receipt, AlertTriangle, PieChart, Briefcase, User, Calendar, Calculator, Percent, UploadCloud, FileImage,
-  Layers, Coins, RefreshCw
+  Layers, Coins, RefreshCw, HandCoins, Gem
 } from 'lucide-react';
 
-import { MOCK_APPLICATIONS } from './constants';
-import { Trip, Expense, Traveler, BasicInfo } from './types';
+import { MOCK_APPLICATIONS, HARDSHIP_LOCATIONS } from './constants';
+import { Trip, Expense, Traveler, BasicInfo, Loan } from './types';
 import CityPicker from './components/CityPicker';
 import ProjectPicker from './components/ProjectPicker';
 import FilterableHeader from './components/FilterableHeader';
@@ -17,18 +18,18 @@ import FilterableHeader from './components/FilterableHeader';
 const App = () => {
   const HOURS = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
 
-  // 状态：数据带出加载动画
+  // 状态
   const [isSyncing, setIsSyncing] = useState(false);
-  // 状态：费用类别筛选
   const [categoryFilter, setCategoryFilter] = useState('all');
 
-  // 1. 同行人员名册
-  const [travelers, setTravelers] = useState<Traveler[]>([
+  // 人员库
+  const [availableTravelers] = useState<Traveler[]>([
     { id: 'U1', name: '张三', code: '001245', level: 'M2', isMain: true, bankAccount: '6222 0210 **** 8888', bankName: '招商银行北京分行' },
-    { id: 'U2', name: '李四', code: '001246', level: 'P5', isMain: false, bankAccount: '6217 0001 **** 1234', bankName: '建设银行上海分行' }
+    { id: 'U2', name: '李四', code: '001246', level: 'P5', isMain: false, bankAccount: '6217 0001 **** 1234', bankName: '建设银行上海分行' },
+    { id: 'U3', name: '王五', code: '001247', level: 'P3', isMain: false, bankAccount: '6228 4801 **** 5678', bankName: '农业银行北京分行' }
   ]);
 
-  // 2. 基本信息
+  // 基本信息
   const [basicInfo, setBasicInfo] = useState<BasicInfo>({
     docNo: 'BX202401058892', 
     docDate: '2024-01-05',   
@@ -45,14 +46,14 @@ const App = () => {
     currency: 'CNY - 人民币'
   });
 
-  // 3. 行程明细
+  // 行程明细
   const [trips, setTrips] = useState<Trip[]>([]);
 
-  // 4. 费用清单
+  // 费用数据
   const [expenses, setExpenses] = useState<Expense[]>([
     { 
       id: 3, source: 'personal', category: '住宿', type: '酒店', date: '2024-01-06', 
-      invoiceAmount: 900.00, reimbursableAmount: 800.00, taxRate: 6, taxAmount: 50.94, 
+      invoiceAmount: 900.00, reimbburasableAmount: 800.00, taxRate: 6, taxAmount: 50.94, 
       payeeId: 'U2', desc: '喀什商务酒店(超标自付100)', policyStatus: 'ok', receipt: true 
     },
     { 
@@ -62,25 +63,26 @@ const App = () => {
     },
   ]);
 
-  // --- 业务逻辑 ---
+  // 借款核销
+  const [loans, setLoans] = useState<Loan[]>([
+    { id: 'L1', orderNo: 'JK202312001', totalAmount: 5000, remainingAmount: 2000, clearingAmount: 1000 }
+  ]);
+
+  // --- 逻辑处理 ---
   const handleSelectApplication = (appId: string) => {
     if (!appId) return;
     setIsSyncing(true);
-    
-    // 模拟API请求延迟
     setTimeout(() => {
       const appData = MOCK_APPLICATIONS.find(app => app.id === appId);
       if (appData) {
-        setBasicInfo(prev => ({ 
-          ...prev, 
-          requestId: appData.id, 
-          description: appData.title 
-        }));
-        setTrips(appData.trips);
-        setExpenses(prev => {
-          const personalExpenses = prev.filter(e => e.source === 'personal');
-          return [...personalExpenses, ...appData.corpExpenses];
-        });
+        setBasicInfo(prev => ({ ...prev, requestId: appData.id, description: appData.title }));
+        setTrips(appData.trips.map(t => ({
+          ...t,
+          mainTravelerId: t.mainTravelerId || 'U1',
+          fellowTravelerIds: t.fellowTravelerIds || [],
+          specificHardshipArea: t.specificHardshipArea || ''
+        })));
+        setExpenses(prev => [...prev.filter(e => e.source === 'personal'), ...appData.corpExpenses]);
       }
       setIsSyncing(false);
     }, 600);
@@ -90,404 +92,320 @@ const App = () => {
     setTrips(prev => prev.map(t => {
       if (t.id !== id) return t;
       const newTrip = { ...t, [field]: value };
-      
-      // 日期联动天数计算
       if (field === 'startDate' || field === 'endDate') {
         const start = new Date(field === 'startDate' ? value : newTrip.startDate);
         const end = new Date(field === 'endDate' ? value : newTrip.endDate);
         if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
           start.setHours(0,0,0,0); end.setHours(0,0,0,0);
-          const diffTime = end.getTime() - start.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          newTrip.days = diffDays > 0 ? diffDays : (diffDays === 0 ? 1 : 0);
+          const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          newTrip.days = diffDays >= 0 ? diffDays + 1 : 0;
         }
       }
+      if (field === 'specificHardshipArea' && value !== '') newTrip.isHardship = true;
       return newTrip;
     }));
   };
 
-  const addTrip = () => setTrips([...trips, { id: Date.now(), from: '', to: '', startDate: '', startTime: '09:00', endDate: '', endTime: '18:00', days: 1, isHardship: false }]);
-  const removeTrip = (id: number | string) => trips.length > 0 && setTrips(trips.filter(t => t.id !== id));
-  
-  const addTraveler = () => {
-    const name = window.prompt("请输入同行人姓名:");
-    if (name) setTravelers([...travelers, { id: `U${Date.now()}`, name, code: 'NEW', level: 'P5', isMain: false, bankAccount: '待录入', bankName: '待录入' }]);
-  };
-  
-  const removeTraveler = (id: string) => {
-    const traveler = travelers.find(t => t.id === id);
-    if (traveler && !traveler.isMain) {
-        setTravelers(prev => prev.filter(t => t.id !== id));
-    }
-  };
+  const addTrip = () => setTrips([...trips, { 
+    id: Date.now(), from: '', to: '', startDate: '', startTime: '09:00', endDate: '', endTime: '18:00', 
+    days: 1, isHardship: false, mainTravelerId: 'U1', fellowTravelerIds: [], specificHardshipArea: ''
+  }]);
+
+  // Fix: Add the missing removeTrip function
+  const removeTrip = (id: number | string) => setTrips(prev => prev.filter(t => t.id !== id));
 
   const updateExpense = (id: number | string, field: keyof Expense, value: any) => {
     setExpenses(prev => prev.map(e => {
       if (e.id !== id) return e;
       const newExp = { ...e, [field]: value };
-      
       if (field === 'invoiceAmount') {
         const val = Number(value);
-        if (newExp.category === '餐饮' && val > 100) {
-          newExp.reimbursableAmount = 100;
-          newExp.policyStatus = 'warn'; newExp.msg = '超标自动核减';
-        } else {
-          newExp.reimbursableAmount = val;
-          newExp.policyStatus = 'ok'; newExp.msg = '';
-        }
-        if (Number(newExp.taxRate) > 0) newExp.taxAmount = Number((Number(newExp.invoiceAmount) / (1 + Number(newExp.taxRate) / 100) * (Number(newExp.taxRate) / 100)).toFixed(2));
-      } else if (field === 'taxRate') {
-        const rate = Number(value);
-        newExp.taxAmount = Number((Number(newExp.invoiceAmount) / (1 + rate / 100) * (rate / 100)).toFixed(2));
+        newExp.reimbursableAmount = (newExp.category === '餐饮' && val > 100) ? 100 : val;
+        newExp.policyStatus = (newExp.category === '餐饮' && val > 100) ? 'warn' : 'ok';
+        newExp.msg = newExp.policyStatus === 'warn' ? '超标自动核减' : '';
       }
       return newExp;
     }));
   };
 
-  const updateExpensePayee = (expId: number | string, payeeId: string) => setExpenses(expenses.map(e => e.id === expId ? { ...e, payeeId } : e));
-  const removeExpense = (id: number | string) => setExpenses(prev => prev.filter(e => e.id !== id));
-
-  // --- 核心计算 ---
   const totals = useMemo(() => {
-    const hardshipDays = trips.filter(t => t.isHardship).reduce((acc, curr) => acc + (Number(curr.days) || 0), 0);
-    const hardshipAllowance = hardshipDays * 200 * travelers.length;
-    
     const settlementMap: Record<string, number> = {};
-    travelers.forEach(t => settlementMap[t.id] = 0);
-    expenses.filter(e => e.source === 'personal').forEach(e => {
-      settlementMap[e.payeeId] = (settlementMap[e.payeeId] || 0) + Number(e.reimbursableAmount);
+    availableTravelers.forEach(t => settlementMap[t.id] = 0);
+
+    // 1. 艰苦补贴
+    let totalHardshipAllowance = 0;
+    trips.forEach(trip => {
+      if (trip.isHardship) {
+        const participantsCount = 1 + (trip.fellowTravelerIds?.length || 0);
+        const allowance = Number(trip.days || 0) * 200 * participantsCount;
+        totalHardshipAllowance += allowance;
+        settlementMap[trip.mainTravelerId] = (settlementMap[trip.mainTravelerId] || 0) + allowance;
+      }
     });
-    
-    const mainId = travelers.find(t => t.isMain)?.id || travelers[0].id;
-    settlementMap[mainId] += hardshipAllowance;
 
-    const corpTotal = expenses.filter(e => e.source === 'corp').reduce((s, e) => s + Number(e.invoiceAmount), 0);
-    const personalInvoiceTotal = expenses.filter(e => e.source === 'personal').reduce((s, e) => s + Number(e.invoiceAmount), 0);
-    const personalReimbursableTotal = expenses.filter(e => e.source === 'personal').reduce((s, e) => s + Number(e.reimbursableAmount), 0);
-    const allowanceTotal = hardshipAllowance;
-    const grandTotal = corpTotal + personalInvoiceTotal + allowanceTotal;
-    const totalPayable = personalReimbursableTotal + allowanceTotal;
-    const totalTax = expenses.reduce((s, e) => s + (Number(e.taxAmount) || 0), 0);
-    const warningCount = expenses.filter(e => e.policyStatus === 'warn').length;
-    const missingReceiptCount = expenses.filter(e => e.source === 'personal' && !e.receipt).length;
+    // 2. 个人报销
+    expenses.filter(e => e.source === 'personal').forEach(e => {
+      settlementMap[e.payeeId] = (settlementMap[e.payeeId] || 0) + Number(e.reimbursableAmount || 0);
+    });
 
-    return { hardshipDays, settlementMap, grandTotal, totalPayable, corpTotal, personalInvoiceTotal, personalReimbursableTotal, allowanceTotal, totalTax, warningCount, missingReceiptCount, travelersCount: travelers.length };
-  }, [travelers, trips, expenses]);
+    // 3. 扣除借款
+    const totalCleared = loans.reduce((s, l) => s + Number(l.clearingAmount || 0), 0);
+    const mainId = availableTravelers.find(t => t.name === basicInfo.reimburser)?.id || 'U1';
+    settlementMap[mainId] = Math.max(0, (settlementMap[mainId] || 0) - totalCleared);
 
-  const filteredPersonalExpenses = expenses.filter(e => e.source === 'personal' && (categoryFilter === 'all' || e.category === categoryFilter));
-  const filteredCorpExpenses = expenses.filter(e => e.source === 'corp' && (categoryFilter === 'all' || e.category === categoryFilter));
+    const corpTotal = expenses.filter(e => e.source === 'corp').reduce((s, e) => s + Number(e.invoiceAmount || 0), 0);
+    const persInvTotal = expenses.filter(e => e.source === 'personal').reduce((s, e) => s + Number(e.invoiceAmount || 0), 0);
+    const persReimTotal = expenses.filter(e => e.source === 'personal').reduce((s, e) => s + Number(e.reimbursableAmount || 0), 0);
+    const totalPayable = Object.values(settlementMap).reduce((a, b) => a + b, 0);
+
+    // Fix: Include settlementMap in the return object as it's used in the JSX
+    return { 
+      totalHardshipAllowance, 
+      totalPayable, 
+      corpTotal, 
+      persInvTotal, 
+      persReimTotal, 
+      totalCleared, 
+      grandTotal: corpTotal + persInvTotal + totalHardshipAllowance,
+      settlementMap
+    };
+  }, [availableTravelers, trips, expenses, loans, basicInfo.reimburser]);
+
+  const filteredPersonal = expenses.filter(e => e.source === 'personal' && (categoryFilter === 'all' || e.category === categoryFilter));
+  const filteredCorp = expenses.filter(e => e.source === 'corp' && (categoryFilter === 'all' || e.category === categoryFilter));
   const uniqueCategories = Array.from(new Set(expenses.map(e => e.category)));
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-20 select-none">
       {/* 顶部工具栏 */}
-      <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm px-8 py-3 flex justify-between items-center">
+      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-3 flex justify-between items-center">
         <div className="flex items-center gap-4">
-          <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center text-white font-bold shadow-blue-500/20 shadow-lg italic text-lg">U</div>
+          <div className="w-9 h-9 bg-indigo-700 rounded-xl flex items-center justify-center text-white font-black shadow-indigo-500/20 shadow-xl italic text-xl">R</div>
           <div>
-            <h1 className="text-sm font-bold text-slate-800 tracking-tight">国内出差报销单</h1>
-            <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1">单据编号: <span className="font-mono text-slate-600">{basicInfo.docNo}</span></p>
+            <h1 className="text-sm font-black text-slate-800 tracking-tight">国内差旅报销结算</h1>
+            <p className="text-[10px] text-slate-400 font-bold font-mono uppercase tracking-tighter">REF: {basicInfo.docNo}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-4 py-1.5 text-xs font-bold border rounded-md hover:bg-slate-50 transition-all text-slate-600">存草稿</button>
-          <button className="px-6 py-1.5 text-xs bg-blue-600 text-white rounded-md font-bold shadow-lg transition-all flex items-center gap-1 hover:bg-blue-700 active:scale-95">
-            <CheckCircle2 size={12}/> 提交审批
+          <button className="px-4 py-1.5 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">保存草稿</button>
+          <button className="px-6 py-1.5 text-xs bg-indigo-600 text-white rounded-lg font-black shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-1">
+            <CheckCircle2 size={14}/> 提交审批
           </button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto mt-6 px-4 space-y-6">
-        {/* 顶部仪表盘 */}
+      <div className="max-w-7xl mx-auto mt-6 px-4 space-y-6">
+        {/* 核心看板 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-slate-900 rounded-2xl p-5 text-white shadow-xl border border-slate-800 flex flex-col justify-between relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Calculator size={100} fill="currentColor"/></div>
-            <div className="flex justify-between items-start z-10"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest flex items-center gap-1"><PieChart size={12} className="text-blue-400"/> 总金额合计</span></div>
-            <div className="mt-2 text-2xl font-black italic tracking-tighter text-white z-10">¥ {totals.grandTotal.toLocaleString()}</div>
-            <p className="text-[10px] opacity-40 mt-1 z-10">商旅 {totals.corpTotal.toLocaleString()} + 垫付 {totals.personalInvoiceTotal.toLocaleString()} + 补贴</p>
+          <div className="bg-slate-900 rounded-2xl p-5 text-white shadow-2xl border border-slate-800 flex flex-col justify-between relative group">
+            <div className="flex justify-between items-start z-10 text-indigo-400 uppercase text-[10px] font-black tracking-widest"><PieChart size={14}/> 总报销金额</div>
+            <div className="mt-3 text-3xl font-black italic tracking-tighter z-10">¥ {totals.grandTotal.toLocaleString()}</div>
+            <p className="text-[10px] opacity-40 mt-1 z-10">含统付 ¥{totals.corpTotal.toLocaleString()} + 个人 ¥{totals.persInvTotal.toLocaleString()}</p>
           </div>
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between relative group ring-2 ring-indigo-50">
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Wallet size={80} className="text-green-600"/></div>
-            <div className="flex justify-between items-start"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Wallet size={12} className="text-green-600"/> 应付员工合计</span></div>
-            <div className="mt-2 text-2xl font-black text-green-600 tracking-tighter italic">¥ {totals.totalPayable.toLocaleString()}</div>
-            <p className="text-[10px] text-slate-400 mt-1 font-medium">可报销垫付 ¥{totals.personalReimbursableTotal.toLocaleString()} + 艰苦补贴</p>
+          <div className="bg-white rounded-2xl p-5 border border-indigo-100 shadow-sm flex flex-col justify-between ring-2 ring-indigo-50/50">
+            <div className="flex justify-between items-start text-indigo-600 uppercase text-[10px] font-black tracking-widest"><Wallet size={14}/> 应付员工合计</div>
+            <div className="mt-3 text-3xl font-black text-indigo-700 tracking-tighter italic">¥ {totals.totalPayable.toLocaleString()}</div>
+            <p className="text-[10px] text-indigo-400 mt-1 font-bold">补贴/垫付 - 借款核销</p>
           </div>
-          <div className="bg-blue-50 rounded-2xl p-5 border border-blue-100 shadow-sm flex flex-col justify-between relative group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Building2 size={80} className="text-blue-600"/></div>
-            <span className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-1"><Building2 size={12} className="text-blue-600"/> 商旅支付</span>
-            <div className="mt-2 text-2xl font-black text-blue-700 tracking-tighter italic">¥ {totals.corpTotal.toLocaleString()}</div>
-            <p className="text-[10px] text-blue-400 mt-1 font-medium">公司直接结算</p>
+          <div className="bg-blue-50 rounded-2xl p-5 border border-blue-100 flex flex-col justify-between">
+            <div className="flex justify-between items-start text-blue-600 uppercase text-[10px] font-black tracking-widest"><Building2 size={14}/> 公司统付总额</div>
+            <div className="mt-3 text-3xl font-black text-blue-700 tracking-tighter italic">¥ {totals.corpTotal.toLocaleString()}</div>
+            <p className="text-[10px] text-blue-400 mt-1 font-bold">商旅预订平台直接结算</p>
           </div>
-          <div className="bg-indigo-50 rounded-2xl p-5 border border-indigo-100 shadow-sm flex flex-col justify-between relative group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Percent size={80} className="text-indigo-600"/></div>
-            <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-1"><Receipt size={12} className="text-indigo-600"/> 进项税额汇总</span>
-            <div className="mt-2 text-2xl font-black text-indigo-700 tracking-tighter italic">¥ {totals.totalTax.toLocaleString()}</div>
-            <p className="text-[10px] text-indigo-400 mt-1 font-medium">专票/客票可抵扣总额</p>
+          <div className="bg-amber-50 rounded-2xl p-5 border border-amber-100 flex flex-col justify-between">
+            <div className="flex justify-between items-start text-amber-600 uppercase text-[10px] font-black tracking-widest"><HandCoins size={14}/> 本次核销借款</div>
+            <div className="mt-3 text-3xl font-black text-amber-700 tracking-tighter italic">¥ {totals.totalCleared.toLocaleString()}</div>
+            <p className="text-[10px] text-amber-400 mt-1 font-bold">自动从报销款中抵减</p>
           </div>
         </div>
 
         {/* 1. 基本信息 */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 font-bold text-xs text-slate-500 flex items-center gap-2 uppercase tracking-wider">
-            <FileText size={14} className="text-blue-600"/> 单据基本信息
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 font-black text-[10px] text-slate-500 flex items-center gap-2 uppercase tracking-widest">
+            <FileText size={14} className="text-indigo-600"/> 报销单基本属性
           </div>
-          <div className="p-5 grid grid-cols-1 md:grid-cols-4 gap-x-6 gap-y-4">
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400 font-bold uppercase">单据编号</label>
-              <div className="border-b border-slate-100 py-1 text-sm font-bold text-slate-500 font-mono bg-slate-50 px-2 rounded-t">{basicInfo.docNo}</div>
+          <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="space-y-1"><label className="text-[10px] text-slate-400 font-black uppercase">单据编号</label><div className="text-sm font-mono font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded">{basicInfo.docNo}</div></div>
+            <div className="space-y-1"><label className="text-[10px] text-slate-400 font-black uppercase">报销人</label>
+              <select className="w-full border-b border-slate-100 py-1 text-sm font-black text-indigo-600 bg-transparent outline-none cursor-pointer" value={basicInfo.reimburser} onChange={(e) => setBasicInfo({...basicInfo, reimburser: e.target.value})}>
+                {availableTravelers.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+              </select>
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><Calendar size={10}/> 单据日期</label>
-              <input className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" type="date" value={basicInfo.docDate} onChange={(e) => setBasicInfo({...basicInfo, docDate: e.target.value})}/>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><User size={10}/> 创建人</label>
-              <input className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" value={basicInfo.creator} onChange={(e) => setBasicInfo({...basicInfo, creator: e.target.value})}/>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><UserCheck size={10}/> 报销人</label>
-              <input className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none text-blue-600" value={basicInfo.reimburser} onChange={(e) => setBasicInfo({...basicInfo, reimburser: e.target.value})}/>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400 font-bold uppercase">费用承担组织</label>
-              <div className="flex items-center gap-2 border-b border-slate-100 py-1"><Building2 size={12} className="text-slate-400"/><input className="text-sm font-bold bg-transparent outline-none w-full truncate" value={basicInfo.costOrg} onChange={(e) => setBasicInfo({...basicInfo, costOrg: e.target.value})}/></div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400 font-bold uppercase">费用承担部门</label>
-              <div className="flex items-center gap-2 border-b border-slate-100 py-1"><Briefcase size={12} className="text-slate-400"/><input className="text-sm font-bold bg-transparent outline-none w-full truncate" value={basicInfo.costDept} onChange={(e) => setBasicInfo({...basicInfo, costDept: e.target.value})}/></div>
-            </div>
-
-            {/* 项目管控区 */}
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400 font-bold uppercase">是否项目关联</label>
-              <div className="flex items-center gap-3 py-1.5">
-                <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="isProject" checked={basicInfo.isProject} onChange={() => setBasicInfo({...basicInfo, isProject: true})} className="text-blue-600"/><span className="text-xs font-bold">是</span></label>
-                <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="isProject" checked={!basicInfo.isProject} onChange={() => setBasicInfo({...basicInfo, isProject: false, projectType: '非项目支出', projectCode: ''})} className="text-blue-600"/><span className="text-xs font-bold text-slate-500">否</span></label>
-              </div>
-            </div>
-
-            {basicInfo.isProject && (
-              <>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><Layers size={10}/> 项目类型</label>
-                  <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none cursor-pointer" value={basicInfo.projectType} onChange={(e) => setBasicInfo({...basicInfo, projectType: e.target.value})}>
-                    <option value="科研项目">科研项目</option>
-                    <option value="非科研项目">非科研项目</option>
-                    <option value="非项目支出">非项目支出</option>
-                  </select>
-                </div>
-                {basicInfo.projectType !== '非项目支出' && (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><Coins size={10}/> 资金来源</label>
-                      <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none cursor-pointer" value={basicInfo.fundSource} onChange={(e) => setBasicInfo({...basicInfo, fundSource: e.target.value})}>
-                        <option value="自筹">自筹资金</option>
-                        <option value="专项资金">专项资金</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 font-bold uppercase">选择关联项目</label>
-                      <ProjectPicker value={basicInfo.projectCode} onChange={(val) => setBasicInfo({...basicInfo, projectCode: val})} placeholder="输入编号或名称..." />
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-
-            <div className="space-y-1 md:col-span-2">
-              <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">出差申请单 (单号) <Info size={10} className="text-blue-400"/></label>
+            <div className="space-y-1 md:col-span-2"><label className="text-[10px] text-slate-400 font-black uppercase">关联申请单</label>
               <div className="relative">
-                <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none cursor-pointer text-indigo-600 appearance-none pr-6 focus:border-indigo-500 transition-colors" value={basicInfo.requestId} onChange={(e) => handleSelectApplication(e.target.value)}>
-                  <option value="">请选择出差申请 (带出行程与商旅订单)</option>
-                  {MOCK_APPLICATIONS.map(app => (<option key={app.id} value={app.id}>{app.id} - {app.title}</option>))}
+                <select className="w-full border-b border-slate-100 py-1 text-sm font-bold text-indigo-500 bg-transparent outline-none appearance-none cursor-pointer pr-6" value={basicInfo.requestId} onChange={(e) => handleSelectApplication(e.target.value)}>
+                  <option value="">点击选择有效出差申请...</option>
+                  {MOCK_APPLICATIONS.map(app => <option key={app.id} value={app.id}>{app.id} - {app.title}</option>)}
                 </select>
-                {isSyncing ? <RefreshCw size={12} className="absolute right-0 top-1.5 text-indigo-500 animate-spin"/> : <Search size={12} className="absolute right-0 top-1.5 text-slate-400 pointer-events-none"/>}
+                {isSyncing ? <RefreshCw size={12} className="absolute right-0 top-2 animate-spin text-indigo-500"/> : <Search size={12} className="absolute right-0 top-2 text-slate-300"/>}
               </div>
             </div>
-
-            <div className="space-y-1 md:col-span-4">
-              <label className="text-[10px] text-slate-400 font-bold uppercase">报销说明</label>
-              <input className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none focus:border-blue-500 transition-colors" value={basicInfo.description} onChange={(e) => setBasicInfo({...basicInfo, description: e.target.value})} placeholder="请输入详细的报销事由..."/>
-            </div>
+            <div className="space-y-1 md:col-span-4"><label className="text-[10px] text-slate-400 font-black uppercase">费用承担组织 / 部门</label><div className="text-xs font-bold text-slate-700 border-b border-slate-100 py-1">{basicInfo.costOrg} / {basicInfo.costDept}</div></div>
           </div>
         </div>
 
-        {/* 2. 差旅人员与行程 */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 font-bold text-[10px] text-slate-500 flex justify-between items-center uppercase tracking-widest">
-            <div className="flex items-center gap-2"><Users size={14} className="text-blue-600"/> 差旅人员与行程</div>
+        {/* 2. 行程与人员 */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 font-black text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-2">
+            <MapPin size={14} className="text-indigo-600"/> 差旅行程及参与人员
           </div>
-          <div className="p-5 space-y-6">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] text-slate-400 font-black uppercase">同行人员名册 ({totals.travelersCount}人)</label>
-                <div className="text-[9px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded">* 系统将根据职级 (Level) 自动匹配差旅标准</div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {travelers.map(t => (
-                  <div key={t.id} className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border text-xs ${t.isMain ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-                    <div title={`职级: ${t.level}`} className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black cursor-help ${t.isMain ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>{t.level}</div>
-                    <span className="font-bold">{t.name}</span>
-                    {!t.isMain && <X size={12} className="opacity-40 hover:opacity-100 cursor-pointer" onClick={()=>removeTraveler(t.id)}/>}
-                  </div>
-                ))}
-                <button onClick={addTraveler} className="flex items-center justify-center w-8 h-8 rounded-full border border-dashed border-slate-300 text-slate-400 hover:border-blue-400 hover:text-blue-600 transition-all"><Plus size={14}/></button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {trips.length === 0 && <div className="text-center py-4 text-xs text-slate-400">暂无行程，请选择出差申请单或手动添加</div>}
-              {trips.map((trip, idx) => (
-                <div key={trip.id} className="flex items-start md:items-center gap-4 p-2 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-all rounded-lg overflow-visible">
-                  <div className="w-6 text-center font-black text-slate-200 text-xs mt-2 md:mt-0">#{idx+1}</div>
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div className="flex items-center gap-2 relative z-20">
-                      <MapPin size={12} className="text-slate-300"/>
-                      <CityPicker value={trip.from} placeholder="出发城市" onChange={(val) => updateTrip(trip.id, 'from', val)}/>
-                      <ArrowRight size={12} className="text-slate-300"/>
-                      <CityPicker value={trip.to} placeholder="目的城市" onChange={(val) => updateTrip(trip.id, 'to', val)} autoHardshipCallback={(isHardship) => updateTrip(trip.id, 'isHardship', isHardship)}/>
-                    </div>
-                    <div className="flex flex-col gap-1.5 bg-slate-50 p-2 rounded-lg border border-slate-100 relative z-10">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] text-slate-400 w-6 text-right">开始</span>
-                        <input type="date" className="text-[10px] bg-white border border-slate-200 rounded px-1 w-20 outline-none focus:border-blue-400" value={trip.startDate} onChange={(e)=>updateTrip(trip.id, 'startDate', e.target.value)}/>
-                        <select className="text-[10px] bg-white border border-slate-200 rounded px-1 w-14 outline-none focus:border-blue-400" value={trip.startTime} onChange={(e)=>updateTrip(trip.id, 'startTime', e.target.value)}>{HOURS.map(h => <option key={h} value={h}>{h}</option>)}</select>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] text-slate-400 w-6 text-right">结束</span>
-                        <input type="date" className="text-[10px] bg-white border border-slate-200 rounded px-1 w-20 outline-none focus:border-blue-400" value={trip.endDate} onChange={(e)=>updateTrip(trip.id, 'endDate', e.target.value)}/>
-                        <select className="text-[10px] bg-white border border-slate-200 rounded px-1 w-14 outline-none focus:border-blue-400" value={trip.endTime} onChange={(e)=>updateTrip(trip.id, 'endTime', e.target.value)}>{HOURS.map(h => <option key={h} value={h}>{h}</option>)}</select>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col md:flex-row items-center gap-3">
-                    <div className="flex items-center gap-1"><input type="number" className="text-sm bg-white border border-slate-200 rounded w-10 text-center font-bold text-blue-600 outline-none" value={trip.days} onChange={(e)=>updateTrip(trip.id, 'days', e.target.value)}/><span className="text-[9px] font-bold text-slate-400">天</span></div>
-                    <div className="flex items-center gap-1 border border-slate-200 rounded px-1 py-0.5 bg-white">
-                      <span className="text-[9px] text-slate-400">艰苦地区:</span>
-                      <select className={`text-[10px] font-bold outline-none bg-transparent cursor-pointer ${trip.isHardship ? 'text-amber-600' : 'text-slate-600'}`} value={trip.isHardship ? 'yes' : 'no'} onChange={(e) => updateTrip(trip.id, 'isHardship', e.target.value === 'yes')}><option value="no">否</option><option value="yes">是</option></select>
-                    </div>
-                    <Trash2 size={14} className="text-slate-200 hover:text-red-400 cursor-pointer" onClick={() => removeTrip(trip.id)} />
-                  </div>
-                </div>
-              ))}
-              <button onClick={addTrip} className="w-full py-2 text-[10px] font-bold text-slate-400 border border-dashed border-slate-200 rounded-lg hover:bg-slate-50 hover:text-blue-500 transition-all">+ 增加行程段</button>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. 费用清单 */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Wallet size={16} className="text-blue-600"/> 费用明细与税务抵扣</h3>
-            <div className="flex gap-2 text-[10px]">
-              <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span>合规</div>
-              <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span>超标</div>
-            </div>
-          </div>
-
-          <div className="border-2 border-dashed border-indigo-200 bg-indigo-50/50 rounded-xl p-6 text-center hover:bg-indigo-50 transition-colors cursor-pointer group">
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><UploadCloud size={24} className="text-indigo-500"/></div>
-              <div className="space-y-1"><p className="text-sm font-bold text-indigo-700">拖拽上传发票 / 点击扫描</p><p className="text-[10px] text-slate-400">餐饮票、酒店票、打车票统一上传，系统自动核减超标餐饮费</p></div>
-            </div>
-          </div>
-
-          {/* 个人报销列表 */}
-          <div className="bg-white rounded-xl border border-indigo-200 shadow-md overflow-hidden">
-            <div className="px-6 py-2 bg-indigo-50/30 border-b border-indigo-100 flex justify-between items-center">
-              <span className="text-[10px] font-black text-indigo-700 flex items-center gap-2 uppercase"><UserCheck size={14} /> 1. 员工报销 (个人垫付+补贴)</span>
-              <div className="text-[10px] flex gap-3">
-                <span className="text-slate-400 font-bold">发票总额: ¥ {totals.personalInvoiceTotal.toLocaleString()}</span>
-                <span className="text-indigo-600 font-black">实报总额: ¥ {totals.personalReimbursableTotal.toLocaleString()}</span>
-              </div>
-            </div>
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 font-bold uppercase tracking-tighter">
+          <div className="p-0 overflow-x-auto">
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 font-black uppercase text-[10px]">
                 <tr>
-                  <th className="p-3 w-10 text-center">票据</th>
-                  <FilterableHeader title="类别" options={uniqueCategories} currentFilter={categoryFilter} onFilterChange={setCategoryFilter}/>
-                  <th className="p-3">摘要说明</th>
-                  <th className="p-3 w-24 text-indigo-600">收款人</th>
-                  <th className="p-3 w-24 text-right bg-slate-50/50">发票含税</th>
-                  <th className="p-3 w-20 text-right">抵扣税</th>
-                  <th className="p-3 w-24 text-right bg-indigo-50/30 text-indigo-700">本次报销</th>
-                  <th className="p-3 w-8"></th>
+                  <th className="p-4 w-10 text-center">序号</th>
+                  <th className="p-4 w-40">行程路线</th>
+                  <th className="p-4 w-60 text-center">日期段</th>
+                  <th className="p-4 w-44 bg-amber-50/30">具体艰苦地区(县/镇)</th>
+                  <th className="p-4 w-32">出行人 (主)</th>
+                  <th className="p-4">同行人员</th>
+                  <th className="p-4 w-20 text-center">艰苦</th>
+                  <th className="p-4 w-10"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filteredPersonalExpenses.map(exp => (
-                  <tr key={exp.id} className="hover:bg-indigo-50/10 group">
-                    <td className="p-3 text-center">
-                      {!exp.receipt ? <div className="w-6 h-6 rounded bg-red-100 text-red-600 flex items-center justify-center mx-auto cursor-pointer animate-pulse hover:scale-110 transition-transform shadow-sm border border-red-200" title="点击上传发票"><UploadCloud size={14}/></div> : <div className="w-6 h-6 rounded bg-green-50 text-green-600 flex items-center justify-center mx-auto border border-green-200"><FileImage size={14}/></div>}
+                {trips.map((trip, idx) => (
+                  <tr key={trip.id} className="hover:bg-slate-50/50 group transition-all">
+                    <td className="p-4 text-center font-black text-slate-300">{(idx + 1).toString().padStart(2, '0')}</td>
+                    <td className="p-4"><div className="flex items-center gap-2 font-black text-slate-700 relative z-40"><CityPicker value={trip.from} onChange={(v)=>updateTrip(trip.id, 'from', v)}/><ArrowRight size={10} className="text-slate-300"/><CityPicker value={trip.to} onChange={(v)=>updateTrip(trip.id, 'to', v)} autoHardshipCallback={(h)=>updateTrip(trip.id, 'isHardship', h)}/></div></td>
+                    <td className="p-4"><div className="flex items-center justify-center gap-2 font-mono font-bold text-[10px] bg-white border border-slate-100 rounded-lg px-2 py-1 shadow-sm"><input type="date" className="bg-transparent outline-none w-24" value={trip.startDate} onChange={(e)=>updateTrip(trip.id, 'startDate', e.target.value)}/><span>~</span><input type="date" className="bg-transparent outline-none w-24" value={trip.endDate} onChange={(e)=>updateTrip(trip.id, 'endDate', e.target.value)}/></div></td>
+                    <td className="p-4 bg-amber-50/10">
+                      <div className="relative">
+                        <select className={`w-full bg-white border rounded-lg px-2 py-1.5 font-bold outline-none appearance-none transition-all ${trip.specificHardshipArea ? 'border-amber-300 text-amber-700 ring-4 ring-amber-50' : 'border-slate-200 text-slate-400'}`} value={trip.specificHardshipArea} onChange={(e) => updateTrip(trip.id, 'specificHardshipArea', e.target.value)}>
+                          <option value="">-- 选择艰苦地点 --</option>
+                          {HARDSHIP_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                        </select>
+                        {trip.specificHardshipArea && <Gem size={10} className="absolute right-2 top-2.5 text-amber-500"/>}
+                      </div>
                     </td>
-                    <td className="p-3 font-bold text-indigo-600">{exp.type}</td>
-                    <td className="p-3 text-slate-600 font-medium italic"><div className="truncate max-w-[180px]" title={exp.desc}>{exp.desc}</div></td>
-                    <td className="p-3">
-                      <select className="bg-white border border-indigo-100 rounded px-1 py-0.5 font-bold text-indigo-600 outline-none text-[10px] w-full cursor-pointer hover:border-indigo-400 transition-colors" value={exp.payeeId} onChange={(e) => updateExpensePayee(exp.id, e.target.value)}>
-                        {travelers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    <td className="p-4">
+                      <select className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-black text-slate-700 outline-none focus:border-indigo-400" value={trip.mainTravelerId} onChange={(e) => updateTrip(trip.id, 'mainTravelerId', e.target.value)}>
+                        {availableTravelers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </td>
-                    <td className="p-3 text-right bg-slate-50/30">
-                      <div className="relative"><span className="absolute left-0 text-slate-300">¥</span><input type="number" className="w-full bg-transparent text-right font-bold text-slate-500 outline-none" value={exp.invoiceAmount} onChange={(e) => updateExpense(exp.id, 'invoiceAmount', e.target.value)}/></div>
-                    </td>
-                    <td className="p-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <select className="text-[9px] bg-slate-100 rounded px-1 py-0.5 outline-none text-slate-500 font-bold" value={exp.taxRate} onChange={(e) => updateExpense(exp.id, 'taxRate', e.target.value)}>
-                          <option value="0">0%</option><option value="6">6%</option><option value="9">9%</option><option value="13">13%</option>
-                        </select>
+                    <td className="p-4">
+                      <div className="flex flex-wrap gap-1 max-w-[200px]">
+                        {availableTravelers.filter(t => t.id !== trip.mainTravelerId).map(t => (
+                          <label key={t.id} className={`px-2 py-0.5 rounded-full border text-[9px] font-black cursor-pointer transition-all ${trip.fellowTravelerIds.includes(t.id) ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'}`}>
+                            <input type="checkbox" className="hidden" checked={trip.fellowTravelerIds.includes(t.id)} onChange={(e) => {
+                              const newIds = e.target.checked ? [...trip.fellowTravelerIds, t.id] : trip.fellowTravelerIds.filter(id => id !== t.id);
+                              updateTrip(trip.id, 'fellowTravelerIds', newIds);
+                            }}/> {t.name}
+                          </label>
+                        ))}
                       </div>
-                      <div className="text-[9px] text-indigo-400 font-bold mt-0.5">¥ {exp.taxAmount}</div>
                     </td>
-                    <td className="p-3 text-right bg-indigo-50/20">
-                      <div className="relative border-b border-indigo-200"><span className="absolute left-0 text-indigo-300">¥</span><input type="number" className="w-full bg-transparent text-right font-black text-indigo-700 outline-none" value={exp.reimbursableAmount} onChange={(e) => updateExpense(exp.id, 'reimbursableAmount', e.target.value)}/></div>
-                      {exp.policyStatus === 'warn' && <div className="text-[8px] text-orange-500 font-bold mt-0.5 text-right">{exp.msg}</div>}
+                    <td className="p-4 text-center">
+                      <button className={`p-2 rounded-xl border transition-all ${trip.isHardship ? 'bg-amber-100 border-amber-300 text-amber-600 shadow-inner' : 'bg-slate-50 border-slate-200 text-slate-200'}`} onClick={() => updateTrip(trip.id, 'isHardship', !trip.isHardship)}>
+                        <Zap size={14} fill={trip.isHardship ? "currentColor" : "none"}/>
+                      </button>
                     </td>
-                    <td className="p-3 text-center"><X size={12} className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 cursor-pointer" onClick={() => removeExpense(exp.id)}/></td>
+                    <td className="p-4 text-center"><Trash2 size={16} className="text-slate-200 hover:text-red-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-all" onClick={() => removeTrip(trip.id)}/></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={addTrip} className="w-full py-3 text-[10px] font-black text-slate-400 bg-slate-50/50 hover:bg-slate-50 hover:text-indigo-600 border-t border-slate-100 uppercase tracking-widest transition-all">+ 新增行程段</button>
+        </div>
+
+        {/* 3. 费用模块 */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Receipt size={16} className="text-indigo-600"/> 费用清单及税务抵扣</h3>
+          </div>
+
+          {/* 发票扫描区域 */}
+          <div className="border-2 border-dashed border-indigo-200 bg-indigo-50/20 rounded-2xl p-8 text-center hover:bg-indigo-50/40 transition-colors cursor-pointer group shadow-inner">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform"><UploadCloud size={28} className="text-indigo-500"/></div>
+              <div className="space-y-1">
+                <p className="text-sm font-black text-indigo-700">拖拽上传发票图片或 PDF / 点击开始扫描</p>
+                <p className="text-[10px] text-slate-400 font-bold">系统将自动识别：日期、类别、税率、金额，并根据职级核减超标餐饮费</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 表1：员工报销 */}
+          <div className="bg-white rounded-2xl border border-indigo-200 shadow-xl overflow-hidden">
+            <div className="px-6 py-3 bg-indigo-600 border-b border-indigo-700 flex justify-between items-center text-white">
+              <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest"><UserCheck size={14} /> 1. 员工报销汇总 (个人垫付 + 补贴)</span>
+              <div className="text-[10px] flex gap-4 font-black">
+                <span className="opacity-70">垫付总额: ¥ {totals.persInvTotal.toLocaleString()}</span>
+                <span className="bg-white/20 px-2 py-1 rounded">实报总额: ¥ {totals.persReimTotal.toLocaleString()}</span>
+              </div>
+            </div>
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 font-black uppercase text-[10px]">
+                <tr>
+                  <th className="p-4 w-12 text-center">票据</th>
+                  <FilterableHeader title="类别" options={uniqueCategories} currentFilter={categoryFilter} onFilterChange={setCategoryFilter}/>
+                  <th className="p-4">明细摘要</th>
+                  <th className="p-4 w-24 text-indigo-600">收款人</th>
+                  <th className="p-4 w-24 text-right">发票含税</th>
+                  <th className="p-4 w-28 text-right bg-indigo-50/30 text-indigo-700">本次报销</th>
+                  <th className="p-4 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredPersonal.map(exp => (
+                  <tr key={exp.id} className="hover:bg-indigo-50/10 group transition-all">
+                    <td className="p-4 text-center">
+                      {!exp.receipt ? <div className="w-7 h-7 rounded-lg bg-red-100 text-red-600 flex items-center justify-center mx-auto border border-red-200 shadow-sm animate-pulse cursor-pointer"><UploadCloud size={14}/></div> : <div className="w-7 h-7 rounded-lg bg-green-50 text-green-600 flex items-center justify-center mx-auto border border-green-200"><FileImage size={14}/></div>}
+                    </td>
+                    <td className="p-4 font-black text-indigo-600">{exp.type}</td>
+                    <td className="p-4 text-slate-500 font-bold italic truncate max-w-[200px]">{exp.desc}</td>
+                    <td className="p-4">
+                      <select className="bg-white border border-indigo-100 rounded-lg px-1.5 py-1 font-black text-indigo-600 outline-none text-[10px] w-full" value={exp.payeeId} onChange={(e) => updateExpense(exp.id, 'payeeId', e.target.value)}>
+                        {availableTravelers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="p-4 text-right text-slate-400 font-mono font-bold">¥ {Number(exp.invoiceAmount).toLocaleString()}</td>
+                    <td className="p-4 text-right bg-indigo-50/20">
+                      <div className="relative border-b-2 border-indigo-200"><span className="absolute left-0 text-indigo-300 font-black italic">¥</span><input type="number" className="w-full bg-transparent text-right font-black text-indigo-700 outline-none text-sm" value={exp.reimbursableAmount} onChange={(e) => updateExpense(exp.id, 'reimbursableAmount', e.target.value)}/></div>
+                      {exp.policyStatus === 'warn' && <div className="text-[8px] text-orange-500 font-black mt-1 text-right tracking-tight">{exp.msg}</div>}
+                    </td>
+                    <td className="p-4 text-center"><X size={14} className="text-slate-200 hover:text-red-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-all" onClick={() => setExpenses(expenses.filter(e => e.id !== exp.id))}/></td>
                   </tr>
                 ))}
                 <tr className="bg-amber-50/50">
-                  <td className="p-3 text-center"><Zap size={12} className="text-amber-500 mx-auto" fill="currentColor"/></td>
-                  <td className="p-3 text-amber-600 font-bold italic" colSpan={2}>
-                    <div className="flex flex-col"><span>艰苦地区津贴 (包干)</span><span className="text-[9px] font-normal opacity-70">公式: ¥200/天 × {totals.hardshipDays}天(艰苦段) × {totals.travelersCount}人</span></div>
-                  </td>
-                  <td className="p-3 font-bold text-amber-700 text-[10px] align-top pt-3">{travelers.find(t=>t.isMain)?.name} (主)</td>
-                  <td className="p-3 text-right text-slate-300 font-mono text-[10px] bg-slate-50/30">—</td>
-                  <td className="p-3 text-right text-slate-300 font-mono text-[10px]">—</td>
-                  <td className="p-3 text-right font-black text-amber-700 bg-indigo-50/10 align-top pt-3">¥ {totals.allowanceTotal.toFixed(2)}</td>
+                  <td className="p-4 text-center"><Zap size={14} className="text-amber-500 mx-auto" fill="currentColor"/></td>
+                  <td className="p-4 text-amber-700 font-black italic" colSpan={2}>艰苦地区津贴 (包干) <span className="text-[8px] font-normal opacity-70 ml-2">根据行程自动计算</span></td>
+                  <td className="p-4 font-black text-amber-600 text-[10px]">汇总至出行人</td>
+                  <td className="p-4 text-right text-slate-300 text-[10px] font-mono">--</td>
+                  <td className="p-4 text-right font-black text-amber-700 bg-indigo-50/10 text-sm italic">¥ {totals.totalHardshipAllowance.toLocaleString()}</td>
                   <td></td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          {/* 公司统付列表 */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-2 bg-blue-50/30 border-b border-blue-100 flex justify-between items-center">
-              <span className="text-[10px] font-black text-blue-700 flex items-center gap-2 uppercase"><Building2 size={14} /> 2. 公司统付 (商旅)</span>
-              <span className="text-[10px] font-bold text-slate-400">小计: ¥ {totals.corpTotal.toLocaleString()}</span>
+          {/* 表2：公司统付 */}
+          <div className="bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden opacity-90">
+            <div className="px-6 py-3 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
+              <span className="text-[10px] font-black text-blue-700 flex items-center gap-2 uppercase tracking-widest"><Building2 size={14} /> 2. 公司统付汇总 (商旅预订订单)</span>
+              <span className="text-[10px] font-black text-blue-400">统付结算额: ¥ {totals.corpTotal.toLocaleString()}</span>
             </div>
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 font-bold uppercase tracking-tighter">
+              <thead className="bg-slate-50 text-slate-300 border-b border-slate-100 font-black uppercase text-[10px]">
                 <tr>
-                  <th className="p-3 w-10">状态</th>
-                  <FilterableHeader title="类别" options={uniqueCategories} currentFilter={categoryFilter} onFilterChange={setCategoryFilter}/>
-                  <th className="p-3">说明</th>
-                  <th className="p-3 w-24 text-right">发票含税额</th>
-                  <th className="p-3 w-24 text-right">抵扣税额</th>
-                  <th className="p-3 w-24 text-right">报销入账</th>
+                  <th className="p-4 w-12 text-center">状态</th>
+                  <th className="p-4 w-28">发生日期</th>
+                  <th className="p-4 w-28">类别</th>
+                  <th className="p-4">摘要信息</th>
+                  <th className="p-4 w-24 text-right">发票金额</th>
+                  <th className="p-4 w-24 text-right text-blue-600">入账金额</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filteredCorpExpenses.map(exp => (
-                  <tr key={exp.id} className="hover:bg-blue-50/10">
-                    <td className="p-3 text-center">{exp.policyStatus === 'warn' ? <AlertTriangle size={14} className="text-orange-500 mx-auto" title={exp.msg}/> : <CheckCircle2 size={14} className="text-green-500 mx-auto"/>}</td>
-                    <td className="p-3 text-slate-500 font-medium">{exp.date}</td>
-                    <td className="p-3 font-bold text-slate-700">{exp.type}</td>
-                    <td className="p-3 text-slate-500 flex flex-col justify-center"><span>{exp.desc}</span>{exp.policyStatus === 'warn' && <span className="text-[9px] text-orange-600 font-bold">{exp.msg}</span>}</td>
-                    <td className="p-3 text-right font-medium text-slate-500">¥ {Number(exp.invoiceAmount).toFixed(2)}</td>
-                    <td className="p-3 text-right text-indigo-500 text-[10px] font-bold">
-                      <div className="flex flex-col items-end"><span>¥ {exp.taxAmount}</span><span className="text-[9px] opacity-60">{exp.taxRate}%</span></div>
-                    </td>
-                    <td className="p-3 text-right font-black text-slate-800">¥ {Number(exp.invoiceAmount).toFixed(2)}</td>
+                {filteredCorp.map(exp => (
+                  <tr key={exp.id} className="hover:bg-blue-50/10 group">
+                    <td className="p-4 text-center">{exp.policyStatus === 'warn' ? <AlertTriangle size={14} className="text-orange-400 mx-auto"/> : <CheckCircle2 size={14} className="text-green-500 mx-auto"/>}</td>
+                    <td className="p-4 font-mono text-slate-400">{exp.date}</td>
+                    <td className="p-4 font-black text-slate-700">{exp.type}</td>
+                    <td className="p-4 text-slate-400 italic">{exp.desc}</td>
+                    <td className="p-4 text-right font-bold text-slate-300">¥ {Number(exp.invoiceAmount).toLocaleString()}</td>
+                    <td className="p-4 text-right font-black text-blue-700">¥ {Number(exp.invoiceAmount).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -495,49 +413,68 @@ const App = () => {
           </div>
         </div>
 
-        {/* 4. 资金结算信息 */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
-          <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 font-bold text-[10px] text-slate-500 flex justify-between items-center uppercase tracking-widest">
-            <div className="flex items-center gap-2"><Landmark size={14} className="text-blue-600"/> 资金结算信息 (推送四库系统)</div>
-            <div className="flex items-center gap-1 text-[9px] bg-green-50 text-green-600 px-2 py-0.5 rounded border border-green-100"><Zap size={10} fill="currentColor"/> 结构化数据已生成</div>
+        {/* 4. 核销借款 */}
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-3 bg-amber-50 border-b border-amber-100 font-black text-[10px] text-amber-700 flex justify-between items-center uppercase tracking-widest">
+            <div className="flex items-center gap-2"><Landmark size={14} className="text-amber-600"/> 核销员工历史借款</div>
+            <button className="text-[9px] bg-white text-amber-600 border border-amber-200 px-3 py-1 rounded-full font-black hover:bg-amber-600 hover:text-white transition-all shadow-sm">+ 调取借款单</button>
           </div>
-          <div className="p-5">
-            <div className="grid grid-cols-1 gap-3">
-              {travelers.filter(t => (totals.settlementMap[t.id] || 0) > 0).map(t => (
-                <div key={t.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg bg-slate-50/50 hover:bg-white hover:border-indigo-200 transition-all group">
-                  <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-600 shadow-sm">{t.name[0]}</div>
-                    <div>
-                      <div className="flex items-center gap-2"><span className="text-sm font-bold text-slate-700">{t.name}</span><span className="text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded">员工报销</span></div>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-0.5 font-mono"><span className="flex items-center gap-1"><CreditCard size={10}/> {t.bankAccount || '待录入'}</span><span className="flex items-center gap-1"><Building2 size={10}/> {t.bankName || '待录入'}</span></div>
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50 text-slate-300 border-b border-slate-100 font-black uppercase tracking-tighter">
+              <tr>
+                <th className="p-4">借款单号</th>
+                <th className="p-4 text-right">原始借款金额</th>
+                <th className="p-4 text-right">当前未还余额</th>
+                <th className="p-4 w-40 text-right text-amber-700 bg-amber-50/20">本次核销金额</th>
+                <th className="p-4 w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {loans.map(loan => (
+                <tr key={loan.id} className="hover:bg-amber-50/10 group">
+                  <td className="p-4 font-mono font-black text-slate-500">{loan.orderNo}</td>
+                  <td className="p-4 text-right font-bold text-slate-300">¥ {loan.totalAmount.toLocaleString()}</td>
+                  <td className="p-4 text-right font-bold text-orange-400">¥ {loan.remainingAmount.toLocaleString()}</td>
+                  <td className="p-4 text-right bg-amber-50/10">
+                    <div className="flex items-center justify-end gap-1">
+                      <span className="text-amber-300 font-black">¥</span>
+                      <input type="number" className="w-28 text-right bg-transparent border-b-2 border-amber-200 font-black text-amber-700 outline-none text-sm" value={loan.clearingAmount} onChange={(e) => setLoans(loans.map(l => l.id === loan.id ? {...l, clearingAmount: Number(e.target.value)} : l))}/>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-black text-indigo-600 italic">¥ {totals.settlementMap[t.id]?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                    <div className="text-[9px] text-slate-400 font-bold">实付金额</div>
+                  </td>
+                  <td className="p-4 text-center"><X size={14} className="text-slate-200 hover:text-red-500 cursor-pointer opacity-0 group-hover:opacity-100" onClick={()=>setLoans(loans.filter(l=>l.id!==loan.id))}/></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 5. 资金结算明细 */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden mb-12">
+          <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 font-black text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-2">
+            <CreditCard size={14} className="text-indigo-600"/> 最终资金结算支付清单
+          </div>
+          <div className="p-6 space-y-4">
+            {availableTravelers.filter(t => (totals.settlementMap[t.id] || 0) > 0).map(t => (
+              <div key={t.id} className="flex items-center justify-between p-5 border border-slate-100 rounded-2xl bg-slate-50/50 hover:border-indigo-300 hover:shadow-lg transition-all group">
+                <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black text-xl shadow-lg shadow-indigo-200">{t.name[0]}</div>
+                  <div>
+                    <div className="flex items-center gap-3"><span className="text-base font-black text-slate-800">{t.name}</span><span className="text-[9px] bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-black">EMPLOYEE PAYABLE</span></div>
+                    <div className="text-[10px] text-slate-400 mt-1 font-mono font-bold">{t.bankName} | {t.bankAccount}</div>
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-slate-100 flex justify-end items-center gap-4">
-              <span className="text-[10px] font-bold text-slate-400">结算笔数: {travelers.filter(t => (totals.settlementMap[t.id] || 0) > 0).length} 笔</span>
-              <div className="flex items-baseline gap-2"><span className="text-xs font-bold text-slate-600">本次资金支出合计:</span><span className="text-xl font-black text-indigo-600">¥ {totals.totalPayable.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-indigo-700 italic tracking-tighter">¥ {totals.settlementMap[t.id].toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                  <div className="text-[9px] text-slate-400 font-black uppercase tracking-widest">最终实付金额</div>
+                </div>
+              </div>
+            ))}
+            <div className="mt-6 pt-6 border-t border-slate-100 flex justify-end items-baseline gap-4">
+              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">应付合计:</span>
+              <span className="text-3xl font-black text-indigo-700 italic tracking-tighter">¥ {totals.totalPayable.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
             </div>
           </div>
         </div>
-
-        {/* 5. 审批流 */}
-        <div className="pt-4 border-t border-slate-200">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Briefcase size={12}/> 预计审批流程</p>
-          <div className="flex items-center gap-2 text-xs">
-            <div className="flex flex-col items-center gap-1 opacity-50"><div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500">张</div><span className="text-[9px] font-bold text-slate-400">发起人</span></div>
-            <div className="h-0.5 w-8 bg-slate-200"></div>
-            <div className="flex flex-col items-center gap-1"><div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center font-bold text-blue-600 border border-blue-200">刘</div><span className="text-[9px] font-bold text-slate-600">项目经理</span></div>
-            <div className="h-0.5 w-8 bg-slate-200"></div>
-            <div className="flex flex-col items-center gap-1 opacity-50"><div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500">财</div><span className="text-[9px] font-bold text-slate-400">财务初审</span></div>
-          </div>
-        </div>
-
       </div>
     </div>
   );
