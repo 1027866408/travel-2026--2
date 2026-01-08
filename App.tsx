@@ -56,7 +56,7 @@ const App = () => {
     },
     { 
       id: 4, source: 'personal', category: '餐饮', type: '工作餐', date: '2024-01-07', 
-      invoiceAmount: 450.00, reimbursableAmount: 450.00, taxRate: 0, taxAmount: 0,
+      invoiceAmount: 450.00, reimbursableAmount: 450.00, taxRate: 0, taxAmount: 0, 
       payeeId: 'U1', desc: '全组客户晚餐', policyStatus: 'ok', receipt: false 
     },
   ]);
@@ -215,7 +215,7 @@ const App = () => {
           </div>
         </div>
 
-        {/* 1. 基本信息 (已恢复详细字段) */}
+        {/* 1. 基本信息 */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 font-black text-[10px] text-slate-500 flex items-center gap-2 uppercase tracking-widest">
             <FileText size={14} className="text-indigo-600"/> 报销单基本属性
@@ -262,7 +262,7 @@ const App = () => {
             <div className="space-y-1">
               <label className="text-[10px] text-slate-400 font-bold uppercase">是否项目</label>
               <select 
-                className={`w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none ${basicInfo.isProject ? 'text-indigo-600' : 'text-slate-500'}`}
+                className={`w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none cursor-pointer ${basicInfo.isProject ? 'text-indigo-600' : 'text-slate-500'}`}
                 value={basicInfo.isProject ? 'yes' : 'no'} 
                 onChange={(e) => setBasicInfo({...basicInfo, isProject: e.target.value === 'yes'})}
               >
@@ -279,7 +279,7 @@ const App = () => {
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] text-slate-400 font-bold uppercase">项目类型</label>
-                  <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" value={basicInfo.projectType} onChange={(e) => setBasicInfo({...basicInfo, projectType: e.target.value})}>
+                  <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none cursor-pointer" value={basicInfo.projectType} onChange={(e) => setBasicInfo({...basicInfo, projectType: e.target.value})}>
                     <option value="科研项目">科研项目</option>
                     <option value="非科研项目">非科研项目</option>
                     <option value="非项目支出">非项目支出</option>
@@ -290,7 +290,7 @@ const App = () => {
 
             <div className={`space-y-1 ${!basicInfo.isProject ? 'md:col-span-3' : 'md:col-span-1'}`}>
               <label className="text-[10px] text-slate-400 font-bold uppercase">资金来源</label>
-              <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" value={basicInfo.fundSource} onChange={(e) => setBasicInfo({...basicInfo, fundSource: e.target.value})}>
+              <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none cursor-pointer" value={basicInfo.fundSource} onChange={(e) => setBasicInfo({...basicInfo, fundSource: e.target.value})}>
                 <option value="专项资金">专项资金</option>
                 <option value="自筹">自筹</option>
               </select>
@@ -392,20 +392,25 @@ const App = () => {
           </div>
 
           {/* 表1：员工报销 */}
-          <div className="bg-white rounded-2xl border border-indigo-200 shadow-xl overflow-hidden">
-            <div className="px-6 py-3 bg-indigo-600 border-b border-indigo-700 flex justify-between items-center text-white">
+          <div className="bg-white rounded-2xl border border-indigo-200 shadow-xl overflow-x-auto scrollbar-thin">
+            <div className="px-6 py-3 bg-indigo-600 border-b border-indigo-700 flex justify-between items-center text-white min-w-[1000px]">
               <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest"><UserCheck size={14} /> 1. 员工报销汇总 (个人垫付 + 补贴)</span>
               <div className="text-[10px] flex gap-4 font-black">
                 <span className="opacity-70">垫付总额: ¥ {totals.persInvTotal.toLocaleString()}</span>
                 <span className="bg-white/20 px-2 py-1 rounded">实报总额: ¥ {totals.persReimTotal.toLocaleString()}</span>
               </div>
             </div>
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[1000px]">
               <thead className="bg-slate-50 text-slate-400 border-b border-slate-100 font-black uppercase text-[10px]">
                 <tr>
                   <th className="p-4 w-12 text-center">票据</th>
-                  <FilterableHeader title="类别" options={uniqueCategories} currentFilter={categoryFilter} onFilterChange={setCategoryFilter}/>
-                  <th className="p-4">明细摘要</th>
+                  <FilterableHeader title="费用项目" options={uniqueCategories} currentFilter={categoryFilter} onFilterChange={setCategoryFilter}/>
+                  <th className="p-4 w-24">费用明细</th>
+                  <th className="p-4 min-w-[120px]">摘要</th>
+                  <th className="p-4 w-14 text-center">税率</th>
+                  <th className="p-4 w-14 text-center text-slate-300">抵扣%</th>
+                  <th className="p-4 w-24 text-right">不含税额</th>
+                  <th className="p-4 w-24 text-right">可抵扣税额</th>
                   <th className="p-4 w-24 text-indigo-600">收款人</th>
                   <th className="p-4 w-24 text-right">发票含税</th>
                   <th className="p-4 w-28 text-right bg-indigo-50/30 text-indigo-700">本次报销</th>
@@ -418,8 +423,13 @@ const App = () => {
                     <td className="p-4 text-center">
                       {!exp.receipt ? <div className="w-7 h-7 rounded-lg bg-red-100 text-red-600 flex items-center justify-center mx-auto border border-red-200 shadow-sm animate-pulse cursor-pointer"><UploadCloud size={14}/></div> : <div className="w-7 h-7 rounded-lg bg-green-50 text-green-600 flex items-center justify-center mx-auto border border-green-200"><FileImage size={14}/></div>}
                     </td>
-                    <td className="p-4 font-black text-indigo-600">{exp.type}</td>
-                    <td className="p-4 text-slate-500 font-bold italic truncate max-w-[200px]">{exp.desc}</td>
+                    <td className="p-4 font-black text-indigo-600">{exp.category}</td>
+                    <td className="p-4 font-bold text-slate-600">{exp.type}</td>
+                    <td className="p-4 text-slate-500 font-bold italic truncate max-w-[200px]" title={exp.desc}>{exp.desc}</td>
+                    <td className="p-4 text-center font-mono">{exp.taxRate}%</td>
+                    <td className="p-4 text-center font-mono text-slate-400">{exp.taxRate}%</td>
+                    <td className="p-4 text-right font-mono text-slate-400">¥ {(Number(exp.invoiceAmount) - Number(exp.taxAmount)).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td className="p-4 text-right font-mono text-slate-400">¥ {Number(exp.taxAmount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                     <td className="p-4">
                       <select className="bg-white border border-indigo-100 rounded-lg px-1.5 py-1 font-black text-indigo-600 outline-none text-[10px] w-full" value={exp.payeeId} onChange={(e) => updateExpense(exp.id, 'payeeId', e.target.value)}>
                         {availableTravelers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -435,7 +445,7 @@ const App = () => {
                 ))}
                 <tr className="bg-amber-50/50">
                   <td className="p-4 text-center"><Zap size={14} className="text-amber-500 mx-auto" fill="currentColor"/></td>
-                  <td className="p-4 text-amber-700 font-black italic" colSpan={2}>艰苦地区津贴 (包干) <span className="text-[8px] font-normal opacity-70 ml-2">根据行程自动计算</span></td>
+                  <td className="p-4 text-amber-700 font-black italic" colSpan={7}>艰苦地区津贴 (包干) <span className="text-[8px] font-normal opacity-70 ml-2">根据行程自动计算</span></td>
                   <td className="p-4 font-black text-amber-600 text-[10px]">汇总至出行人</td>
                   <td className="p-4 text-right text-slate-300 text-[10px] font-mono">--</td>
                   <td className="p-4 text-right font-black text-amber-700 bg-indigo-50/10 text-sm italic">¥ {totals.totalHardshipAllowance.toLocaleString()}</td>
