@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { 
   FileText, Plus, Trash2, Search, Zap, Wallet, 
@@ -6,7 +5,7 @@ import {
   UserCheck, X, CheckCircle2,
   Users, CreditCard, Landmark, ArrowRight, MapPin, Info,
   Receipt, AlertTriangle, PieChart, Briefcase, User, Calendar, Calculator, Percent, UploadCloud, FileImage,
-  Layers, Coins, RefreshCw, HandCoins, Gem
+  Layers, Coins, RefreshCw, HandCoins, Gem, FileScan
 } from 'lucide-react';
 
 import { MOCK_APPLICATIONS, HARDSHIP_LOCATIONS } from './constants';
@@ -37,13 +36,12 @@ const App = () => {
     reimburser: '张三',      
     costOrg: '用友网络科技股份有限公司', 
     costDept: '技术研发中心 / AI项目组', 
-    description: '', 
+    description: '2024年1月西南西北地区技术调研差旅费', 
     requestId: '', 
     isProject: true, 
     projectType: '科研项目', 
-    projectCode: '', 
-    fundSource: '专项资金', 
-    currency: 'CNY - 人民币'
+    projectCode: 'RD-2024-AI-001 (人工智能大模型预研)', 
+    fundSource: '专项资金'
   });
 
   // 行程明细
@@ -53,7 +51,7 @@ const App = () => {
   const [expenses, setExpenses] = useState<Expense[]>([
     { 
       id: 3, source: 'personal', category: '住宿', type: '酒店', date: '2024-01-06', 
-      invoiceAmount: 900.00, reimbburasableAmount: 800.00, taxRate: 6, taxAmount: 50.94, 
+      invoiceAmount: 900.00, reimbursableAmount: 800.00, taxRate: 6, taxAmount: 50.94, 
       payeeId: 'U2', desc: '喀什商务酒店(超标自付100)', policyStatus: 'ok', receipt: true 
     },
     { 
@@ -111,7 +109,6 @@ const App = () => {
     days: 1, isHardship: false, mainTravelerId: 'U1', fellowTravelerIds: [], specificHardshipArea: ''
   }]);
 
-  // Fix: Add the missing removeTrip function
   const removeTrip = (id: number | string) => setTrips(prev => prev.filter(t => t.id !== id));
 
   const updateExpense = (id: number | string, field: keyof Expense, value: any) => {
@@ -158,7 +155,6 @@ const App = () => {
     const persReimTotal = expenses.filter(e => e.source === 'personal').reduce((s, e) => s + Number(e.reimbursableAmount || 0), 0);
     const totalPayable = Object.values(settlementMap).reduce((a, b) => a + b, 0);
 
-    // Fix: Include settlementMap in the return object as it's used in the JSX
     return { 
       totalHardshipAllowance, 
       totalPayable, 
@@ -219,28 +215,91 @@ const App = () => {
           </div>
         </div>
 
-        {/* 1. 基本信息 */}
+        {/* 1. 基本信息 (已恢复详细字段) */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 font-black text-[10px] text-slate-500 flex items-center gap-2 uppercase tracking-widest">
             <FileText size={14} className="text-indigo-600"/> 报销单基本属性
           </div>
-          <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="space-y-1"><label className="text-[10px] text-slate-400 font-black uppercase">单据编号</label><div className="text-sm font-mono font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded">{basicInfo.docNo}</div></div>
-            <div className="space-y-1"><label className="text-[10px] text-slate-400 font-black uppercase">报销人</label>
-              <select className="w-full border-b border-slate-100 py-1 text-sm font-black text-indigo-600 bg-transparent outline-none cursor-pointer" value={basicInfo.reimburser} onChange={(e) => setBasicInfo({...basicInfo, reimburser: e.target.value})}>
+          <div className="p-5 grid grid-cols-1 md:grid-cols-4 gap-x-6 gap-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-bold uppercase">单据编号</label>
+              <div className="border-b border-slate-100 py-1 text-sm font-bold text-slate-500 font-mono bg-slate-50 px-2 rounded-t">{basicInfo.docNo}</div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><Calendar size={10}/> 单据日期</label>
+              <input className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" type="date" value={basicInfo.docDate} onChange={(e) => setBasicInfo({...basicInfo, docDate: e.target.value})}/>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><User size={10}/> 创建人</label>
+              <input className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" value={basicInfo.creator} onChange={(e) => setBasicInfo({...basicInfo, creator: e.target.value})}/>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1"><UserCheck size={10}/> 报销人</label>
+              <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none text-indigo-600 cursor-pointer" value={basicInfo.reimburser} onChange={(e) => setBasicInfo({...basicInfo, reimburser: e.target.value})}>
                 {availableTravelers.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
               </select>
             </div>
-            <div className="space-y-1 md:col-span-2"><label className="text-[10px] text-slate-400 font-black uppercase">关联申请单</label>
-              <div className="relative">
-                <select className="w-full border-b border-slate-100 py-1 text-sm font-bold text-indigo-500 bg-transparent outline-none appearance-none cursor-pointer pr-6" value={basicInfo.requestId} onChange={(e) => handleSelectApplication(e.target.value)}>
-                  <option value="">点击选择有效出差申请...</option>
-                  {MOCK_APPLICATIONS.map(app => <option key={app.id} value={app.id}>{app.id} - {app.title}</option>)}
-                </select>
-                {isSyncing ? <RefreshCw size={12} className="absolute right-0 top-2 animate-spin text-indigo-500"/> : <Search size={12} className="absolute right-0 top-2 text-slate-300"/>}
+            
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-[10px] text-slate-400 font-bold uppercase">费用承担组织 / 部门</label>
+              <div className="flex items-center gap-2 border-b border-slate-100 py-1">
+                <Building2 size={12} className="text-slate-400"/>
+                <input className="text-sm font-bold bg-transparent outline-none w-full truncate" value={`${basicInfo.costOrg} / ${basicInfo.costDept}`} readOnly/>
               </div>
             </div>
-            <div className="space-y-1 md:col-span-4"><label className="text-[10px] text-slate-400 font-black uppercase">费用承担组织 / 部门</label><div className="text-xs font-bold text-slate-700 border-b border-slate-100 py-1">{basicInfo.costOrg} / {basicInfo.costDept}</div></div>
+             <div className="space-y-1 md:col-span-2">
+              <label className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">出差申请单</label>
+              <div className="relative">
+                <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none cursor-pointer text-indigo-600" value={basicInfo.requestId} onChange={(e) => handleSelectApplication(e.target.value)}>
+                    <option value="">请选择申请单...</option>
+                    {MOCK_APPLICATIONS.map(app => (<option key={app.id} value={app.id}>{app.title}</option>))}
+                </select>
+                {isSyncing && <RefreshCw size={10} className="absolute right-0 top-2 animate-spin text-indigo-500"/>}
+              </div>
+            </div>
+
+            {/* 项目信息逻辑 */}
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-bold uppercase">是否项目</label>
+              <select 
+                className={`w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none ${basicInfo.isProject ? 'text-indigo-600' : 'text-slate-500'}`}
+                value={basicInfo.isProject ? 'yes' : 'no'} 
+                onChange={(e) => setBasicInfo({...basicInfo, isProject: e.target.value === 'yes'})}
+              >
+                <option value="yes">是</option>
+                <option value="no">否</option>
+              </select>
+            </div>
+
+            {basicInfo.isProject && (
+              <>
+                <div className="space-y-1 md:col-span-1">
+                  <label className="text-[10px] text-slate-400 font-bold uppercase">关联项目</label>
+                  <ProjectPicker value={basicInfo.projectCode} onChange={(val) => setBasicInfo({...basicInfo, projectCode: val})} placeholder="选择项目..." />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400 font-bold uppercase">项目类型</label>
+                  <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" value={basicInfo.projectType} onChange={(e) => setBasicInfo({...basicInfo, projectType: e.target.value})}>
+                    <option value="科研项目">科研项目</option>
+                    <option value="非科研项目">非科研项目</option>
+                    <option value="非项目支出">非项目支出</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            <div className={`space-y-1 ${!basicInfo.isProject ? 'md:col-span-3' : 'md:col-span-1'}`}>
+              <label className="text-[10px] text-slate-400 font-bold uppercase">资金来源</label>
+              <select className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" value={basicInfo.fundSource} onChange={(e) => setBasicInfo({...basicInfo, fundSource: e.target.value})}>
+                <option value="专项资金">专项资金</option>
+                <option value="自筹">自筹</option>
+              </select>
+            </div>
+
+            <div className="space-y-1 md:col-span-4">
+              <label className="text-[10px] text-slate-400 font-bold uppercase">报销事由摘要</label>
+              <input className="w-full border-b border-slate-100 py-1 text-sm font-bold bg-transparent outline-none" value={basicInfo.description} onChange={(e) => setBasicInfo({...basicInfo, description: e.target.value})} placeholder="请输入报销事由..."/>
+            </div>
           </div>
         </div>
 
@@ -315,15 +374,21 @@ const App = () => {
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Receipt size={16} className="text-indigo-600"/> 费用清单及税务抵扣</h3>
           </div>
 
-          {/* 发票扫描区域 */}
-          <div className="border-2 border-dashed border-indigo-200 bg-indigo-50/20 rounded-2xl p-8 text-center hover:bg-indigo-50/40 transition-colors cursor-pointer group shadow-inner">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform"><UploadCloud size={28} className="text-indigo-500"/></div>
-              <div className="space-y-1">
-                <p className="text-sm font-black text-indigo-700">拖拽上传发票图片或 PDF / 点击开始扫描</p>
-                <p className="text-[10px] text-slate-400 font-bold">系统将自动识别：日期、类别、税率、金额，并根据职级核减超标餐饮费</p>
-              </div>
-            </div>
+          {/* 优化后的紧凑型发票上传工具栏 */}
+          <div className="flex items-center justify-between bg-white border border-dashed border-indigo-200 rounded-xl px-4 py-3 shadow-sm hover:border-indigo-400 transition-all cursor-pointer group">
+             <div className="flex items-center gap-4">
+                <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-500 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <UploadCloud size={16} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">点击上传或拖拽电子发票 (PDF/OFD/JPG)</span>
+                  <span className="text-[10px] text-slate-400">系统将自动识别发票信息、查重并进行合规性校验</span>
+                </div>
+             </div>
+             <button className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black hover:bg-indigo-600 hover:text-white transition-all">
+                <FileScan size={12}/>
+                启动智能扫描
+             </button>
           </div>
 
           {/* 表1：员工报销 */}

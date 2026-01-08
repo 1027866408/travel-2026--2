@@ -61,7 +61,6 @@ export interface BasicInfo {
   projectType: string;
   projectCode: string;
   fundSource: string;
-  currency: string;
 }
 
 export interface Application {
